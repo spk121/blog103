@@ -62,6 +62,11 @@ removing the container (`docker rm`) never deletes them. Skipping the `-v`
 flags — or using `--rm` without volumes — means all of that state is lost the
 moment the container is removed.
 
+Publishing never renames `/var/www/html/gopher` itself — each publish writes
+into a fresh `releases/<token>` directory underneath it and atomically swaps
+a `current` symlink onto it — so mounting a volume there does not break the
+publish button; gophernicus is configured to serve `gopher/current`.
+
 The HTTP admin lives at `http://localhost/login.php`, and the rendered gopher
 site is served on `gopher://localhost/` (port 70). To create the initial admin
 account inside the container, run:

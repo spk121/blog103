@@ -79,10 +79,12 @@ const MEDIA_KINDS = ['image' => 'Images', 'audio' => 'Sound', 'video' => 'Video'
 // --------------------------------------------------------------------------
 
 /**
- * Where the rendered gopher site is written. Everything under here is
- * replaced on each publish, so point it at a directory used for nothing else.
- * Its parent must be writable, because publishing builds alongside it and
- * swaps the two directories over.
+ * Where the rendered gopher site is written. Publishing creates a
+ * <GOPHER_DIR>/releases/<token> directory per run and atomically swaps the
+ * <GOPHER_DIR>/current symlink onto it, so GOPHER_DIR itself is never
+ * renamed and can safely be a bind mount or Docker volume. Point your
+ * gopher server at <GOPHER_DIR>/current, which always resolves to the latest
+ * publish.
  */
 define('GOPHER_DIR', APP_ROOT . '/gopher');
 

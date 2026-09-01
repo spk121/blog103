@@ -16,7 +16,7 @@ RUN apt-get update \
         '    bind = 0.0.0.0' \
         '    port = 70' \
         '    server = /usr/sbin/gophernicus' \
-        '    server_args = -r /var/www/html/gopher' \
+        '    server_args = -r /var/www/html/gopher/current' \
         '    disable = no' \
         '}' \
         > /etc/xinetd.d/gopher \
@@ -35,7 +35,8 @@ WORKDIR /var/www/html
 
 COPY . /var/www/html
 
-RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
+RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher/releases/empty \
+    && ln -sfn releases/empty /var/www/html/gopher/current \
     && chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
     && a2enmod rewrite \
     && find /var/www/html -type d -exec chmod 755 {} +
@@ -46,7 +47,15 @@ RUN cat <<'EOF' > /usr/local/bin/docker-entrypoint.sh
 #!/bin/bash
 set -euo pipefail
 
-mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher
+mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher/releases
+if [ -e /var/www/html/gopher/current ] && [ ! -L /var/www/html/gopher/current ]; then
+    echo "error: /var/www/html/gopher/current exists but is not a symlink" >&2
+    exit 1
+fi
+if [ ! -e /var/www/html/gopher/current ]; then
+    mkdir -p /var/www/html/gopher/releases/empty
+    ln -sfn releases/empty /var/www/html/gopher/current
+fi
 chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher
 chmod 755 /var/www/html/data /var/www/html/uploads /var/www/html/gopher
 
