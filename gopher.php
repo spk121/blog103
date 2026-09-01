@@ -4,12 +4,13 @@ declare(strict_types=1);
 /**
  * Renders the public entries into a static gopher site.
  *
- * Output tree:
+ * Output tree (served through the <GOPHER_DIR>/current symlink, which each
+ * publish swaps to point at a fresh <GOPHER_DIR>/releases/<token> directory):
  *
- *   <GOPHER_DIR>/gophermap          page 1        selector /
- *   <GOPHER_DIR>/p2/gophermap       page 2        selector /p2
- *   <GOPHER_DIR>/entries/0007.txt   entry bodies  selector /entries/0007.txt
- *   <GOPHER_DIR>/media/<file>       attachments   selector /media/<file>
+ *   <GOPHER_DIR>/current/gophermap          page 1        selector /
+ *   <GOPHER_DIR>/current/p2/gophermap       page 2        selector /p2
+ *   <GOPHER_DIR>/current/entries/0007.txt   entry bodies  selector /entries/0007.txt
+ *   <GOPHER_DIR>/current/media/<file>       attachments   selector /media/<file>
  *
  * A menu line is  <type><display>TAB<selector>TAB<host>TAB<port>CRLF  and the
  * menu ends with a line holding a single period. Display strings and selectors
@@ -145,13 +146,13 @@ function gopher_put(string $path, string $contents): int
 
 /**
  * Delete one of our own scratch directories. Refuses anything that is not a
- * direct child of GOPHER_DIR's parent carrying the suffix we generated, so a
- * misconfigured GOPHER_DIR cannot turn this into a recursive wipe.
+ * direct child of GOPHER_DIR/releases carrying the token name we generated,
+ * so a misconfigured GOPHER_DIR cannot turn this into a recursive wipe.
  */
 function gopher_rmtree(string $dir): bool
 {
     $real = realpath($dir);
-    $parent = realpath(dirname(rtrim(GOPHER_DIR, '/')));
+    $parent = realpath(rtrim(GOPHER_DIR, '/') . '/releases');
 
     if ($real === false || $parent === false) {
         return false;
@@ -159,7 +160,7 @@ function gopher_rmtree(string $dir): bool
     if (dirname($real) !== $parent) {
         return false;
     }
-    if (!preg_match('/\.(new|old)-[0-9a-f]{12}$/', basename($real))) {
+    if (!preg_match('/^[0-9a-f]{12}$/', basename($real))) {
         return false;
     }
 
@@ -349,54 +350,61 @@ function gopher_build(string $root): array
 }
 
 /**
- * Render into a staging directory, then swap it into place, so a failure part
- * way through never leaves a half-written site being served.
+ * Render into a fresh release directory under GOPHER_DIR/releases, then swap
+ * a "current" symlink over to it, so a failure part way through never leaves
+ * a half-written site being served.
+ *
+ * GOPHER_DIR itself is never renamed. When Docker (or anything else) bind
+ * mounts a volume at GOPHER_DIR, the mount point cannot be moved aside with
+ * rename(2) — the kernel refuses with EBUSY. Renaming a symlink that lives
+ * inside GOPHER_DIR has no such problem, so that is what gets swapped
+ * instead.
  */
 function gopher_publish(): array
 {
-    $target = rtrim(GOPHER_DIR, '/');
-    $parent = dirname($target);
+    $base        = rtrim(GOPHER_DIR, '/');
+    $releasesDir = $base . '/releases';
+    $link        = $base . '/current';
 
-    if (!is_dir($parent)) {
-        throw new RuntimeException('The directory above ' . $target . ' does not exist.');
-    }
-    if (!is_writable($parent)) {
-        throw new RuntimeException($parent . ' is not writable by the web server.');
+    gopher_mkdir($releasesDir);
+    if (!is_writable($releasesDir)) {
+        throw new RuntimeException($releasesDir . ' is not writable by the web server.');
     }
 
     $token   = bin2hex(random_bytes(6));
-    $staging = $target . '.new-' . $token;
-    $retired = $target . '.old-' . $token;
+    $release = $releasesDir . '/' . $token;
 
-    gopher_mkdir($staging);
+    gopher_mkdir($release);
 
     try {
-        $report = gopher_build($staging);
+        $report = gopher_build($release);
     } catch (Throwable $e) {
-        gopher_rmtree($staging);
+        gopher_rmtree($release);
         throw $e;
     }
 
-    $hadPrevious = is_dir($target);
+    $previousTarget = @readlink($link);
+    $tmpLink        = $link . '.new-' . $token;
 
-    if ($hadPrevious && !@rename($target, $retired)) {
-        gopher_rmtree($staging);
-        throw new RuntimeException('Cannot move the existing site aside. Check permissions on ' . $parent . '.');
+    if (!@symlink('releases/' . $token, $tmpLink)) {
+        gopher_rmtree($release);
+        throw new RuntimeException('Cannot prepare the new site symlink in ' . $base . '.');
     }
 
-    if (!@rename($staging, $target)) {
-        if ($hadPrevious) {
-            @rename($retired, $target);   // put the old site back
+    if (!@rename($tmpLink, $link)) {
+        @unlink($tmpLink);
+        gopher_rmtree($release);
+        throw new RuntimeException('Cannot swap the new site into place.');
+    }
+
+    if ($previousTarget !== false) {
+        $previousRelease = $releasesDir . '/' . basename($previousTarget);
+        if ($previousRelease !== $release) {
+            gopher_rmtree($previousRelease);
         }
-        gopher_rmtree($staging);
-        throw new RuntimeException('Cannot move the new site into place.');
     }
 
-    if ($hadPrevious) {
-        gopher_rmtree($retired);
-    }
-
-    $report['path'] = $target;
+    $report['path'] = $link;
     $report['at']   = now_utc();
 
     @file_put_contents(DATA_DIR . '/gopher-publish.json', json_encode($report, JSON_PRETTY_PRINT));

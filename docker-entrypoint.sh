@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher
+mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher/releases
+if [ ! -L /var/www/html/gopher/current ]; then
+    mkdir -p /var/www/html/gopher/releases/empty
+    ln -sfn releases/empty /var/www/html/gopher/current
+fi
 chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher
 chmod 755 /var/www/html/data /var/www/html/uploads /var/www/html/gopher
 
