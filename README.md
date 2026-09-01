@@ -39,6 +39,23 @@ media library, and a publish button that renders everything into a static
 There is no registration page and no user table, by design. The only way to
 create or change the account is to run `setup.php` on the server.
 
+## Docker
+
+Build and run the app with its bundled Apache HTTP server and gopher server:
+
+```bash
+docker build -t blog103 .
+docker run --rm -p 80:80 -p 70:70 blog103
+```
+
+The HTTP admin lives at `http://localhost/login.php`, and the rendered gopher
+site is served on `gopher://localhost/` (port 70). To create the initial admin
+account inside the container, run:
+
+```bash
+docker exec -it <container> php /var/www/html/setup.php
+```
+
 ## Files
 
 ```
