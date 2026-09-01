@@ -95,23 +95,6 @@ function gopher_selector(string $path): string
 // Entry text
 // --------------------------------------------------------------------------
 
-/**
- * Rewrap prose to a column width, one paragraph at a time so blank lines are
- * kept. Words longer than the limit (URLs, mostly) are left whole rather than
- * chopped in half.
- */
-function gopher_wrap(string $text, int $columns): string
-{
-    $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", $text));
-
-    foreach ($lines as $i => $line) {
-        $line = rtrim($line);
-        $lines[$i] = $line === '' ? '' : wordwrap($line, $columns, "\n", false);
-    }
-
-    return implode("\n", $lines);
-}
-
 /** The body exactly as the reader will receive it. */
 function gopher_body(array $entry): string
 {
