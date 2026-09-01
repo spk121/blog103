@@ -65,6 +65,24 @@ removing the container (`docker rm`) never deletes them. Skipping the `-v`
 flags — or using `--rm` without volumes — means all of that state is lost the
 moment the container is removed.
 
+The SQLite database is `blog.sqlite` in the `blog103-data` volume. You can
+stop, rebuild, remove, and recreate the container without losing it, provided
+the replacement `docker run` command mounts the same named volumes shown
+above. Do not remove `blog103-data` with `docker volume rm`, or prune unused
+named volumes with `docker volume prune --all`, unless you intend to delete the
+database. Keep the other two volumes as well to preserve the login credentials,
+uploads, and rendered gopher site.
+
+Back up the live SQLite database with SQLite's backup command, which includes
+uncheckpointed WAL changes. Store the resulting file somewhere protected:
+
+```bash
+docker exec blog103 sqlite3 /var/www/html/data/blog.sqlite \
+  ".backup '/var/www/html/data/blog.sqlite.backup'"
+docker cp blog103:/var/www/html/data/blog.sqlite.backup ./blog.sqlite.backup
+docker exec blog103 rm /var/www/html/data/blog.sqlite.backup
+```
+
 Publishing never renames `/var/www/html/gopher` itself — each publish writes
 into a fresh `releases/<token>` directory underneath it and atomically swaps
 a `current` symlink onto it — so mounting a volume there does not break the
