@@ -38,7 +38,6 @@ COPY . /var/www/html
 RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher/releases/empty \
     && ln -sfn releases/empty /var/www/html/gopher/current \
     && chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
-    && a2enmod rewrite \
     && sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/s/AllowOverride None/AllowOverride AuthConfig FileInfo/' /etc/apache2/apache2.conf \
     && sed -n '/<Directory \/var\/www\/>/,/<\/Directory>/p' /etc/apache2/apache2.conf | grep -q 'AllowOverride AuthConfig FileInfo' \
     && find /var/www/html -type d -exec chmod 755 {} +

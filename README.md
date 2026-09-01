@@ -28,11 +28,14 @@ media library, and a publish button that renders everything into a static
    creates the database and, along the way, creates `data/` and `uploads/`
    (owned by whichever user ran the command).
 
-3. Make `data/` and `uploads/` writable by the web server user:
+3. Create `gopher/` and make it, `data/`, and `uploads/` writable by the web
+  server user. Publishing creates release directories and swaps the `current`
+  symlink inside `gopher/`:
 
    ```
-   chown -R www-data data uploads     # or whatever user PHP runs as
-   chmod 755 data uploads
+  mkdir -p gopher/releases
+  chown -R www-data data uploads gopher     # or whatever user PHP runs as
+  chmod 755 data uploads gopher gopher/releases
    ```
 
 4. Open `login.php`.
