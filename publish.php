@@ -65,7 +65,7 @@ page_title('Publish to gopher');
       <dd><?= (int) $preview['media'] ?></dd>
 
       <dt>Written to</dt>
-      <dd><code><?= h(GOPHER_DIR) ?>/current</code></dd>
+      <dd><code><?= h(rtrim(GOPHER_DIR, '/')) ?>/current</code></dd>
 
       <dt>Served as</dt>
       <dd><code>gopher://<?= h(GOPHER_HOST) ?>:<?= GOPHER_PORT ?><?= h(gopher_page_selector(1)) ?></code></dd>

@@ -83,8 +83,8 @@ const MEDIA_KINDS = ['image' => 'Images', 'audio' => 'Sound', 'video' => 'Video'
  * <GOPHER_DIR>/releases/<token> directory per run and atomically swaps the
  * <GOPHER_DIR>/current symlink onto it, so GOPHER_DIR itself is never
  * renamed and can safely be a bind mount or Docker volume. Point your
- * gopher server (or the -v mount, in Docker) at this directory, whose
- * "current" entry always resolves to the latest publish.
+ * gopher server at <GOPHER_DIR>/current, which always resolves to the latest
+ * publish.
  */
 define('GOPHER_DIR', APP_ROOT . '/gopher');
 
