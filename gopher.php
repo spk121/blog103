@@ -17,6 +17,8 @@ declare(strict_types=1);
  * therefore must not contain tabs or line breaks; gopher_clean() enforces that.
  */
 
+require_once __DIR__ . '/paginate.php';
+
 // --------------------------------------------------------------------------
 // Menu building blocks
 // --------------------------------------------------------------------------
@@ -116,7 +118,7 @@ function gopher_body(array $entry): string
     $body = str_replace(["\r\n", "\r"], "\n", (string) ($entry['body'] ?? ''));
 
     if ($entry['body_format'] === 'wrap') {
-        $body = gopher_wrap($body, GOPHER_WRAP_COLUMNS);
+        $body = convert_text_to_paged_document($body);
     }
 
     $body = rtrim($body, "\n");

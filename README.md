@@ -294,9 +294,9 @@ further menus.
 Every entry with a body gets a file under `entries/`, named for its id:
 
 - **Preformatted** entries are written exactly as typed.
-- **Auto-wrapped** entries are rewrapped to `GOPHER_WRAP_COLUMNS`, one
-  paragraph at a time so blank lines survive. Words longer than the limit are
-  left whole rather than split, so a long URL stays clickable.
+- **Auto-wrapped** entries are word-wrapped and laid out as numbered,
+  box-drawn pages. Words longer than the limit are left whole rather than
+  split, so a long URL stays clickable.
 
 The menu line for a text file shows the first `GOPHER_LINK_PREVIEW_CHARS`
 characters of the file, with whitespace flattened to fit on one line.
