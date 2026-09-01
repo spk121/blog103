@@ -27,7 +27,8 @@ WORKDIR /var/www/html
 
 COPY . /var/www/html
 
-RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
+RUN rm -f /var/www/html/Dockerfile /var/www/html/docker-entrypoint.sh \
+    && mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
     && chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
     && a2enmod rewrite \
     && find /var/www/html -type d -exec chmod 755 {} +
