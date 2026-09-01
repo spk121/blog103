@@ -148,7 +148,6 @@ Gopher output, same file:
 | `GOPHER_SELECTOR_BASE` | `''` | Set to `/blog` if the site is not at your gopher root |
 | `GOPHER_TITLE` | `A gopher blog` | Heading at the top of every menu |
 | `GOPHER_ENTRIES_PER_PAGE` | 30 | Past this, menus gain next/previous links |
-| `GOPHER_WRAP_COLUMNS` | 72 | Auto-wrapped entries are rewrapped to this |
 | `GOPHER_LINK_PREVIEW_CHARS` | 40 | Characters of the text shown in its menu line |
 | `GOPHER_DISPLAY_WIDTH` | 70 | Menu display strings truncated to this |
 | `GOPHER_DATE_FORMAT` | `Y-m-d H:i` | Date shown against each entry |
@@ -294,9 +293,9 @@ further menus.
 Every entry with a body gets a file under `entries/`, named for its id:
 
 - **Preformatted** entries are written exactly as typed.
-- **Auto-wrapped** entries are rewrapped to `GOPHER_WRAP_COLUMNS`, one
-  paragraph at a time so blank lines survive. Words longer than the limit are
-  left whole rather than split, so a long URL stays clickable.
+- **Auto-wrapped** entries are word-wrapped and laid out as numbered,
+  box-drawn pages. Words longer than the limit are left whole rather than
+  split, so a long URL stays clickable.
 
 The menu line for a text file shows the first `GOPHER_LINK_PREVIEW_CHARS`
 characters of the file, with whitespace flattened to fit on one line.

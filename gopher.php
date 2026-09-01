@@ -17,6 +17,8 @@ declare(strict_types=1);
  * therefore must not contain tabs or line breaks; gopher_clean() enforces that.
  */
 
+require_once __DIR__ . '/paginate.php';
+
 // --------------------------------------------------------------------------
 // Menu building blocks
 // --------------------------------------------------------------------------
@@ -93,34 +95,29 @@ function gopher_selector(string $path): string
 // Entry text
 // --------------------------------------------------------------------------
 
-/**
- * Rewrap prose to a column width, one paragraph at a time so blank lines are
- * kept. Words longer than the limit (URLs, mostly) are left whole rather than
- * chopped in half.
- */
-function gopher_wrap(string $text, int $columns): string
+/** Render the entry body and the plain-text preview that should appear in menu lines. */
+function gopher_entry_text(array $entry): array
 {
-    $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", $text));
+    $raw = str_replace(["\r\n", "\r"], "\n", (string) ($entry['body'] ?? ''));
+    $body = $raw;
 
-    foreach ($lines as $i => $line) {
-        $line = rtrim($line);
-        $lines[$i] = $line === '' ? '' : wordwrap($line, $columns, "\n", false);
+    if (($entry['body_format'] ?? 'wrap') === 'wrap') {
+        $body = convert_text_to_paged_document($body);
     }
 
-    return implode("\n", $lines);
+    $body = rtrim($body, "\n");
+    $body = $body === '' ? '' : $body . "\n";
+
+    return [
+        'body' => $body,
+        'preview' => $raw,
+    ];
 }
 
 /** The body exactly as the reader will receive it. */
 function gopher_body(array $entry): string
 {
-    $body = str_replace(["\r\n", "\r"], "\n", (string) ($entry['body'] ?? ''));
-
-    if ($entry['body_format'] === 'wrap') {
-        $body = gopher_wrap($body, GOPHER_WRAP_COLUMNS);
-    }
-
-    $body = rtrim($body, "\n");
-    return $body === '' ? '' : $body . "\n";
+    return gopher_entry_text($entry)['body'];
 }
 
 // --------------------------------------------------------------------------
@@ -274,7 +271,8 @@ function gopher_build(string $root): array
             }
 
             // Then the text.
-            $body = gopher_body($entry);
+            $entryText = gopher_entry_text($entry);
+            $body = $entryText['body'];
             if ($body !== '') {
                 $name = sprintf('entries/%04d.txt', $id);
                 $text = GOPHER_TEXT_CRLF ? str_replace("\n", "\r\n", $body) : $body;
@@ -288,7 +286,7 @@ function gopher_build(string $root): array
 
                 $menu .= gopher_line(
                     '0',
-                    gopher_truncate(gopher_tidy($body), GOPHER_LINK_PREVIEW_CHARS),
+                    gopher_truncate(gopher_tidy($entryText['preview']), GOPHER_LINK_PREVIEW_CHARS),
                     gopher_selector($name),
                     '  '
                 );

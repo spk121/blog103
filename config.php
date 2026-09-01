@@ -102,7 +102,6 @@ const GOPHER_SELECTOR_BASE = '';
 const GOPHER_TITLE = 'A gopher blog';
 
 const GOPHER_ENTRIES_PER_PAGE  = 30;
-const GOPHER_WRAP_COLUMNS      = 72;   // auto-wrapped entries are rewrapped to this
 const GOPHER_LINK_PREVIEW_CHARS = 40;  // characters of the text file shown in its menu line
 const GOPHER_DISPLAY_WIDTH     = 70;   // menu display strings are truncated to this
 const GOPHER_DATE_FORMAT       = 'Y-m-d H:i';

@@ -31,6 +31,7 @@
  * Usage (as a module):
  *   require_once 'paginate.php';
  *   convert_to_paged_document('input.txt', 'output.txt');
+ *   $output = convert_text_to_paged_document($input);
  */
 
 declare(strict_types=1);
@@ -65,31 +66,7 @@ function mb_pad_right(string $str, int $len, string $pad = ' '): string
 }
 
 // ---------------------------------------------------------------------
-// Step 1: Load paragraphs from the input file
-// ---------------------------------------------------------------------
-
-/**
- * @return string[] Array of non-empty paragraph strings, in order.
- */
-function load_paragraphs(string $inputFile): array
-{
-    $raw = file($inputFile, FILE_IGNORE_NEW_LINES);
-    if ($raw === false) {
-        throw new RuntimeException("Unable to read input file: {$inputFile}");
-    }
-
-    $paragraphs = [];
-    foreach ($raw as $line) {
-        $line = trim($line);
-        if ($line !== '') {
-            $paragraphs[] = $line;
-        }
-    }
-    return $paragraphs;
-}
-
-// ---------------------------------------------------------------------
-// Step 2: Word-wrap a paragraph into fixed-width lines
+// Step 1: Word-wrap a paragraph into fixed-width lines
 // ---------------------------------------------------------------------
 
 /**
@@ -297,7 +274,27 @@ function render_page(array $pageLines, int $pageNumber): string
 
 function convert_to_paged_document(string $inputFile, string $outputFile): void
 {
-    $paragraphs = load_paragraphs($inputFile);
+    $input = file_get_contents($inputFile);
+    if ($input === false) {
+        throw new RuntimeException("Unable to read input file: {$inputFile}");
+    }
+    $output = convert_text_to_paged_document($input);
+
+    if (file_put_contents($outputFile, $output) === false) {
+        throw new RuntimeException("Unable to write output file: {$outputFile}");
+    }
+}
+
+function convert_text_to_paged_document(string $input): string
+{
+    $paragraphs = [];
+    foreach (preg_split('/\R/u', $input) ?: [] as $line) {
+        $line = trim($line);
+        if ($line !== '') {
+            $paragraphs[] = $line;
+        }
+    }
+
     $lines      = wrap_all_paragraphs($paragraphs);
     $pages      = paginate($lines);
 
@@ -309,9 +306,7 @@ function convert_to_paged_document(string $inputFile, string $outputFile): void
         }
     }
 
-    if (file_put_contents($outputFile, $output) === false) {
-        throw new RuntimeException("Unable to write output file: {$outputFile}");
-    }
+    return $output;
 }
 
 // ---------------------------------------------------------------------
