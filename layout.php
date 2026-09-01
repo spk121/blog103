@@ -26,7 +26,7 @@ function page_head(string $title, string $currentNav = '', bool $showNav = true)
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title><?= h($title) ?> — <?= h(APP_NAME) ?></title>
-<link rel="stylesheet" href="assets/admin.css">
+<link rel="stylesheet" href="admin.css">
 </head>
 <body>
 <?php if ($showNav && $author !== null): ?>

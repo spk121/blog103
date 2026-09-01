@@ -147,7 +147,9 @@ function dt_from_input(string $value): ?string
     $zone = new DateTimeZone(APP_TIMEZONE);
     foreach (['Y-m-d\TH:i:s', 'Y-m-d\TH:i'] as $format) {
         $dt = DateTimeImmutable::createFromFormat($format, $value, $zone);
-        if ($dt instanceof DateTimeImmutable) {
+        // createFromFormat() silently normalizes invalid dates (e.g. 2026-02-30
+        // becomes 2026-03-02), so reject anything that does not round-trip.
+        if ($dt instanceof DateTimeImmutable && $dt->format($format) === $value) {
             return $dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
         }
     }
