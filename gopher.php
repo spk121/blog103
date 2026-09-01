@@ -398,9 +398,14 @@ function gopher_publish(): array
     }
 
     if ($previousTarget !== false) {
-        $previousRelease = $releasesDir . '/' . basename($previousTarget);
-        if ($previousRelease !== $release) {
-            gopher_rmtree($previousRelease);
+        $previousToken = basename($previousTarget);
+        // Ignore anything that is not one of our own release directories,
+        // such as the "empty" placeholder seeded before the first publish.
+        if (preg_match('/^[0-9a-f]{12}$/', $previousToken)) {
+            $previousRelease = $releasesDir . '/' . $previousToken;
+            if ($previousRelease !== $release) {
+                gopher_rmtree($previousRelease);
+            }
         }
     }
 
