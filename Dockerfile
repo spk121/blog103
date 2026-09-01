@@ -38,6 +38,7 @@ COPY . /var/www/html
 RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
     && chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
     && a2enmod rewrite \
+    && sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf \
     && find /var/www/html -type d -exec chmod 755 {} +
 
 EXPOSE 80 70
