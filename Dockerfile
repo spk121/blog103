@@ -24,6 +24,13 @@ RUN apt-get update \
     && apt-get purge -y --auto-remove libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Match config.php's MAX_UPLOAD_BYTES (32 MB); post_max_size is a little
+# larger to leave room for the rest of the multipart form.
+RUN printf '%s\n' \
+        'upload_max_filesize = 32M' \
+        'post_max_size = 40M' \
+        > /usr/local/etc/php/conf.d/blog103-uploads.ini
+
 WORKDIR /var/www/html
 
 COPY . /var/www/html

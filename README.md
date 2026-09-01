@@ -17,14 +17,7 @@ media library, and a publish button that renders everything into a static
 ## Install
 
 1. Copy the files into your web root.
-2. Make `data/` and `uploads/` writable by the web server user:
-
-   ```
-   chown www-data data uploads     # or whatever user PHP runs as
-   chmod 755 data uploads
-   ```
-
-3. Create your account from the command line:
+2. Create your account from the command line:
 
    ```
    php setup.php
@@ -32,7 +25,15 @@ media library, and a publish button that renders everything into a static
 
    It prompts for a username and password, hashes the password with
    `password_hash()`, and writes `data/author.auth` with mode 0600. It also
-   creates the database. Run it again any time to change either credential.
+   creates the database and, along the way, creates `data/` and `uploads/`
+   (owned by whichever user ran the command).
+
+3. Make `data/` and `uploads/` writable by the web server user:
+
+   ```
+   chown -R www-data data uploads     # or whatever user PHP runs as
+   chmod 755 data uploads
+   ```
 
 4. Open `login.php`.
 
@@ -45,8 +46,21 @@ Build and run the app with its bundled Apache HTTP server and gopher server:
 
 ```bash
 docker build -t blog103 .
-docker run --rm -d --name blog103 -p 80:80 -p 70:70 blog103
+docker volume create blog103-data
+docker volume create blog103-uploads
+docker volume create blog103-gopher
+docker run -d --name blog103 -p 80:80 -p 70:70 \
+    -v blog103-data:/var/www/html/data \
+    -v blog103-uploads:/var/www/html/uploads \
+    -v blog103-gopher:/var/www/html/gopher \
+    blog103
 ```
+
+Named volumes keep the credentials file, SQLite database, uploaded media and
+rendered gopher site outside the container's writable layer, so stopping or
+removing the container (`docker rm`) never deletes them. Skipping the `-v`
+flags — or using `--rm` without volumes — means all of that state is lost the
+moment the container is removed.
 
 The HTTP admin lives at `http://localhost/login.php`, and the rendered gopher
 site is served on `gopher://localhost/` (port 70). To create the initial admin
@@ -74,7 +88,7 @@ entry.php       the editor
 media.php       upload, view, delete media
 publish.php     the publish button and its report
 
-assets/admin.css
+admin.css
 data/           blog.sqlite, author.auth, login-throttle.json  (deny all)
 uploads/        media files                                    (no scripts)
 gopher/         the rendered gopher site (created on first publish)
