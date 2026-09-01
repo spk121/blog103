@@ -45,7 +45,7 @@ Build and run the app with its bundled Apache HTTP server and gopher server:
 
 ```bash
 docker build -t blog103 .
-docker run --rm -p 80:80 -p 70:70 blog103
+docker run --rm -d --name blog103 -p 80:80 -p 70:70 blog103
 ```
 
 The HTTP admin lives at `http://localhost/login.php`, and the rendered gopher
@@ -53,7 +53,7 @@ site is served on `gopher://localhost/` (port 70). To create the initial admin
 account inside the container, run:
 
 ```bash
-docker exec -it <container> php /var/www/html/setup.php
+docker exec -it blog103 php /var/www/html/setup.php
 ```
 
 ## Files

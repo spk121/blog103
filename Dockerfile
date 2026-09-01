@@ -6,7 +6,6 @@ RUN apt-get update \
         libsqlite3-dev \
         sqlite3 \
         xinetd \
-    && rm -rf /var/lib/apt/lists/* \
     && printf '%s\n' \
         'service gopher' \
         '{' \
@@ -21,21 +20,43 @@ RUN apt-get update \
         '    disable = no' \
         '}' \
         > /etc/xinetd.d/gopher \
-    && docker-php-ext-install pdo_sqlite
+    && docker-php-ext-install pdo_sqlite \
+    && apt-get purge -y --auto-remove libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
 
 COPY . /var/www/html
 
-RUN rm -f /var/www/html/Dockerfile /var/www/html/docker-entrypoint.sh \
-    && mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
+RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
     && chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
     && a2enmod rewrite \
     && find /var/www/html -type d -exec chmod 755 {} +
 
 EXPOSE 80 70
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN printf '%s\n' \
+        '#!/bin/bash' \
+        'set -euo pipefail' \
+        '' \
+        'mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher' \
+        'chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher' \
+        'chmod 755 /var/www/html/data /var/www/html/uploads /var/www/html/gopher' \
+        '' \
+        'apache2ctl -D FOREGROUND &' \
+        'apache_pid=$!' \
+        '' \
+        '/usr/sbin/xinetd -dontfork -stayalive &' \
+        'xinetd_pid=$!' \
+        '' \
+        'status=0' \
+        "trap 'status=$?; kill \"$apache_pid\" \"$xinetd_pid\" 2>/dev/null || true; wait \"$apache_pid\" \"$xinetd_pid\" 2>/dev/null || true; exit \"$status\"' EXIT" \
+        '' \
+        'wait -n "$apache_pid" "$xinetd_pid" || status=$?' \
+        'kill "$apache_pid" "$xinetd_pid" 2>/dev/null || true' \
+        'wait "$apache_pid" "$xinetd_pid" 2>/dev/null || true' \
+        'exit "$status"' \
+        > /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
