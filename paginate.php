@@ -66,31 +66,7 @@ function mb_pad_right(string $str, int $len, string $pad = ' '): string
 }
 
 // ---------------------------------------------------------------------
-// Step 1: Load paragraphs from the input file
-// ---------------------------------------------------------------------
-
-/**
- * @return string[] Array of non-empty paragraph strings, in order.
- */
-function load_paragraphs(string $inputFile): array
-{
-    $raw = file($inputFile, FILE_IGNORE_NEW_LINES);
-    if ($raw === false) {
-        throw new RuntimeException("Unable to read input file: {$inputFile}");
-    }
-
-    $paragraphs = [];
-    foreach ($raw as $line) {
-        $line = trim($line);
-        if ($line !== '') {
-            $paragraphs[] = $line;
-        }
-    }
-    return $paragraphs;
-}
-
-// ---------------------------------------------------------------------
-// Step 2: Word-wrap a paragraph into fixed-width lines
+// Step 1: Word-wrap a paragraph into fixed-width lines
 // ---------------------------------------------------------------------
 
 /**

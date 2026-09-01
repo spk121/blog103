@@ -95,17 +95,29 @@ function gopher_selector(string $path): string
 // Entry text
 // --------------------------------------------------------------------------
 
-/** The body exactly as the reader will receive it. */
-function gopher_body(array $entry): string
+/** Render the entry body and the plain-text preview that should appear in menu lines. */
+function gopher_entry_text(array $entry): array
 {
-    $body = str_replace(["\r\n", "\r"], "\n", (string) ($entry['body'] ?? ''));
+    $raw = str_replace(["\r\n", "\r"], "\n", (string) ($entry['body'] ?? ''));
+    $body = $raw;
 
-    if ($entry['body_format'] === 'wrap') {
+    if (($entry['body_format'] ?? 'wrap') === 'wrap') {
         $body = convert_text_to_paged_document($body);
     }
 
     $body = rtrim($body, "\n");
-    return $body === '' ? '' : $body . "\n";
+    $body = $body === '' ? '' : $body . "\n";
+
+    return [
+        'body' => $body,
+        'preview' => $raw,
+    ];
+}
+
+/** The body exactly as the reader will receive it. */
+function gopher_body(array $entry): string
+{
+    return gopher_entry_text($entry)['body'];
 }
 
 // --------------------------------------------------------------------------
@@ -259,7 +271,8 @@ function gopher_build(string $root): array
             }
 
             // Then the text.
-            $body = gopher_body($entry);
+            $entryText = gopher_entry_text($entry);
+            $body = $entryText['body'];
             if ($body !== '') {
                 $name = sprintf('entries/%04d.txt', $id);
                 $text = GOPHER_TEXT_CRLF ? str_replace("\n", "\r\n", $body) : $body;
@@ -273,7 +286,7 @@ function gopher_build(string $root): array
 
                 $menu .= gopher_line(
                     '0',
-                    gopher_truncate(gopher_tidy($body), GOPHER_LINK_PREVIEW_CHARS),
+                    gopher_truncate(gopher_tidy($entryText['preview']), GOPHER_LINK_PREVIEW_CHARS),
                     gopher_selector($name),
                     '  '
                 );
