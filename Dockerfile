@@ -31,6 +31,15 @@ RUN printf '%s\n' \
         'post_max_size = 40M' \
         > /usr/local/etc/php/conf.d/blog103-uploads.ini
 
+# The image ships without a php.ini, so PHP's built-in default would print
+# errors (with paths and SQL) to the browser. Log them instead.
+RUN printf '%s\n' \
+        'display_errors = Off' \
+        'display_startup_errors = Off' \
+        'log_errors = On' \
+        'expose_php = Off' \
+        > /usr/local/etc/php/conf.d/blog103-errors.ini
+
 WORKDIR /var/www/html
 
 COPY . /var/www/html
@@ -38,6 +47,7 @@ COPY . /var/www/html
 RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/gopher/releases/empty \
     && ln -sfn releases/empty /var/www/html/gopher/current \
     && chown -R www-data:www-data /var/www/html/data /var/www/html/uploads /var/www/html/gopher \
+    && a2enmod headers \
     && sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/s/AllowOverride None/AllowOverride AuthConfig FileInfo/' /etc/apache2/apache2.conf \
     && sed -n '/<Directory \/var\/www\/>/,/<\/Directory>/p' /etc/apache2/apache2.conf | grep -q 'AllowOverride AuthConfig FileInfo' \
     && find /var/www/html -type d -exec chmod 755 {} +

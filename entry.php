@@ -62,17 +62,38 @@ $errors = [];
 if (is_post()) {
     csrf_verify();
 
-    $form['title']       = post_str('title');
-    $form['body']        = (string) ($_POST['body'] ?? '');
+    $rawTitle = post_str('title');
+    $rawBody  = $_POST['body'] ?? '';
+    $rawBody  = is_string($rawBody) ? $rawBody : '';
+
     $form['body_format'] = post_str('body_format') === 'pre' ? 'pre' : 'wrap';
     $form['visible']     = post_int('visible') === 1 ? 1 : 0;
     $form['created']     = post_str('created');
 
-    // Preformatted text keeps its exact bytes; wrapped text only loses stray
-    // trailing whitespace on the whole field.
-    $body = $form['body_format'] === 'pre'
-        ? str_replace("\r\n", "\n", $form['body'])
-        : trim(str_replace("\r\n", "\n", $form['body']));
+    // Both fields must be valid UTF-8; control characters are dropped and
+    // line endings normalised to \n.
+    $cleanTitle = clean_text($rawTitle, false);
+    $cleanBody  = clean_text($rawBody, true);
+
+    $form['title'] = $cleanTitle !== null ? trim($cleanTitle) : $rawTitle;
+    $form['body']  = $cleanBody ?? $rawBody;
+
+    if ($cleanTitle === null) {
+        $errors[] = 'The title contains characters that are not valid UTF-8 text.';
+    }
+    if ($cleanBody === null) {
+        $errors[] = 'The text contains characters that are not valid UTF-8 text.';
+    }
+    if (u_strlen($form['title']) > MAX_TITLE_CHARS) {
+        $errors[] = 'The title is longer than ' . MAX_TITLE_CHARS . ' characters.';
+    }
+    if (u_strlen($form['body']) > MAX_BODY_CHARS) {
+        $errors[] = 'The text is longer than ' . number_format(MAX_BODY_CHARS) . ' characters.';
+    }
+
+    // Preformatted text keeps every space and line break; wrapped text only
+    // loses stray whitespace at either end of the whole field.
+    $body = $form['body_format'] === 'pre' ? $form['body'] : trim($form['body']);
 
     $createdUtc = dt_from_input($form['created']);
     if ($createdUtc === null) {
@@ -108,9 +129,24 @@ if (is_post()) {
     $links = [];
 
     for ($slot = 0; $slot < MAX_LINKS_PER_ENTRY; $slot++) {
-        $url   = post_arr('link_url', $slot);
-        $label = post_arr('link_label', $slot);
+        $url        = post_arr('link_url', $slot);
+        $rawLabel   = post_arr('link_label', $slot);
+        $cleanLabel = clean_text($rawLabel, false);
+        $label      = $cleanLabel !== null ? trim($cleanLabel) : $rawLabel;
         $form['links'][$slot] = ['url' => $url, 'label' => $label];
+
+        if ($cleanLabel === null) {
+            $errors[] = 'Link ' . ($slot + 1) . ' text contains characters that are not valid UTF-8 text.';
+            continue;
+        }
+        if (u_strlen($label) > MAX_LINK_LABEL_CHARS) {
+            $errors[] = 'Link ' . ($slot + 1) . ' text is longer than ' . MAX_LINK_LABEL_CHARS . ' characters.';
+            continue;
+        }
+        if (strlen($url) > MAX_LINK_URL_BYTES) {
+            $errors[] = 'Link ' . ($slot + 1) . ' is longer than ' . MAX_LINK_URL_BYTES . ' characters.';
+            continue;
+        }
 
         if ($url === '') {
             if ($label !== '') {
@@ -198,7 +234,7 @@ page_head($title, 'entries');
     <label class="field">
       <span class="field-label">Title <span class="hint">optional</span></span>
       <input type="text" name="title" value="<?= h($form['title']) ?>"
-             maxlength="200" placeholder="Leave blank for an untitled entry">
+             maxlength="<?= MAX_TITLE_CHARS ?>" placeholder="Leave blank for an untitled entry">
     </label>
 
     <div class="field">
@@ -220,7 +256,7 @@ page_head($title, 'entries');
       <textarea id="body" name="body" class="manuscript"
                 data-format="<?= h($form['body_format']) ?>"
                 wrap="<?= $form['body_format'] === 'pre' ? 'off' : 'soft' ?>"
-                spellcheck="true" rows="24"
+                spellcheck="true" rows="24" maxlength="<?= MAX_BODY_CHARS ?>"
                 placeholder="Write here. Auto-wrapped text flows to the reader's window; preformatted text keeps every space and line break."><?= "\n" . h($form['body']) ?></textarea>
       <p class="hint hint-block" id="formathint"></p>
     </div>
@@ -299,13 +335,14 @@ page_head($title, 'entries');
             <span class="field-label">Link <?= $slot + 1 ?></span>
             <input type="url" name="link_url[<?= $slot ?>]"
                    value="<?= h($form['links'][$slot]['url']) ?>"
+                   maxlength="<?= MAX_LINK_URL_BYTES ?>"
                    placeholder="https://example.com/page" inputmode="url" spellcheck="false">
           </label>
           <label class="field">
             <span class="visually-hidden">Link <?= $slot + 1 ?> text</span>
             <input type="text" name="link_label[<?= $slot ?>]"
                    value="<?= h($form['links'][$slot]['label']) ?>"
-                   maxlength="120" placeholder="Link text, optional">
+                   maxlength="<?= MAX_LINK_LABEL_CHARS ?>" placeholder="Link text, optional">
           </label>
         </div>
       <?php endfor; ?>
@@ -333,7 +370,7 @@ page_head($title, 'entries');
 
 <script>
 (function () {
-  var library = <?= json_encode($previewData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  var library = <?= js((object) $previewData) ?>;
 
   // Preview whatever each slot currently points at.
   function drawPreview(select) {

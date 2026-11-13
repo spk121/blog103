@@ -15,6 +15,31 @@ if (PHP_SAPI !== 'cli') {
     exit("setup.php runs from the command line only.\n");
 }
 
+/*
+ * Run as the user that owns the data directory, which is the web server's
+ * user once installed. Otherwise the credentials file (mode 0600) and the
+ * database end up owned by someone the web server cannot read or write as,
+ * and sign-in fails with "No account exists yet". Typical case: running
+ * "docker exec" as root.
+ */
+if (function_exists('posix_geteuid')) {
+    $me = posix_geteuid();
+    $dataDir = __DIR__ . '/data';
+    foreach ([$dataDir, $dataDir . '/author.auth', $dataDir . '/blog.sqlite'] as $path) {
+        $owner = file_exists($path) ? fileowner($path) : $me;
+        if ($owner !== $me) {
+            $ownerName = posix_getpwuid((int) $owner)['name'] ?? (string) $owner;
+            $meName    = posix_getpwuid($me)['name'] ?? (string) $me;
+            fwrite(STDERR, "$path belongs to '$ownerName', but this is running as '$meName'.\n"
+                . "Run setup.php as '$ownerName' so the web server can still read what it writes, e.g.\n"
+                . "  sudo -u $ownerName php setup.php\n"
+                . "  docker exec -it -u $ownerName blog103 php /var/www/html/setup.php\n"
+                . "Nothing was changed.\n");
+            exit(1);
+        }
+    }
+}
+
 require __DIR__ . '/config.php';
 
 function prompt(string $question, bool $hidden = false): string

@@ -47,11 +47,22 @@ function auth_write_credentials(string $username, string $passwordHash): void
         JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
     );
 
+    // Create the temp file owner-only from the first byte. Removing any stale
+    // copy first matters: rewriting an existing file keeps its old mode.
     $temp = AUTH_FILE . '.tmp';
-    if (file_put_contents($temp, $payload . "\n", LOCK_EX) === false) {
+    @unlink($temp);
+
+    $oldUmask = umask(0077);
+    try {
+        $written = file_put_contents($temp, $payload . "\n", LOCK_EX);
+    } finally {
+        umask($oldUmask);
+    }
+
+    if ($written === false || !chmod($temp, 0600)) {
+        @unlink($temp);
         throw new RuntimeException('Cannot write ' . AUTH_FILE);
     }
-    @chmod($temp, 0600);
     if (!rename($temp, AUTH_FILE)) {
         @unlink($temp);
         throw new RuntimeException('Cannot replace ' . AUTH_FILE);
@@ -60,48 +71,100 @@ function auth_write_credentials(string $username, string $passwordHash): void
 
 // --------------------------------------------------------------------------
 // Login throttling (per server, not per IP: there is only one account)
+//
+// Every attempt is counted *before* the password is checked, under an
+// exclusive lock, and a successful sign-in clears the count. If the throttle
+// file cannot be read or written, an exception is thrown and the password is
+// never checked, so a broken throttle refuses sign-ins instead of silently
+// allowing unlimited guesses.
 // --------------------------------------------------------------------------
 
-function throttle_read(): array
+function throttle_decode(string|false $raw): array
 {
-    if (!is_readable(THROTTLE_FILE)) {
-        return ['failures' => 0, 'locked_until' => 0];
-    }
-    $data = json_decode((string) file_get_contents(THROTTLE_FILE), true);
+    $data = is_string($raw) ? json_decode($raw, true) : null;
     return [
-        'failures'     => (int) ($data['failures'] ?? 0),
-        'locked_until' => (int) ($data['locked_until'] ?? 0),
+        'failures'     => (int) (is_array($data) ? ($data['failures'] ?? 0) : 0),
+        'locked_until' => (int) (is_array($data) ? ($data['locked_until'] ?? 0) : 0),
     ];
 }
 
-function throttle_write(array $state): void
+/**
+ * Open the throttle file, lock it, and pass the current state to $change.
+ * Whatever $change returns is written back (null means leave it as is).
+ */
+function throttle_locked(int $lock, ?callable $change): array
 {
-    @file_put_contents(THROTTLE_FILE, json_encode($state), LOCK_EX);
+    $handle = @fopen(THROTTLE_FILE, $change === null ? 'r' : 'c+');
+    if ($handle === false) {
+        if ($change === null && !file_exists(THROTTLE_FILE)) {
+            return throttle_decode(false);   // nothing recorded yet
+        }
+        throw new RuntimeException('Cannot open ' . THROTTLE_FILE);
+    }
+
+    try {
+        if (!flock($handle, $lock)) {
+            throw new RuntimeException('Cannot lock ' . THROTTLE_FILE);
+        }
+
+        $raw = stream_get_contents($handle);
+        if ($raw === false) {
+            throw new RuntimeException('Cannot read ' . THROTTLE_FILE);
+        }
+        $state = throttle_decode($raw);
+        $next  = $change === null ? null : $change($state);
+
+        if ($next !== null && $next !== $state) {
+            $json = json_encode($next, JSON_THROW_ON_ERROR);
+            if (!ftruncate($handle, 0) || !rewind($handle)
+                || fwrite($handle, $json) !== strlen($json) || !fflush($handle)) {
+                throw new RuntimeException('Cannot write ' . THROTTLE_FILE);
+            }
+            $state = $next;
+        }
+
+        flock($handle, LOCK_UN);
+        return $state;
+    } finally {
+        fclose($handle);
+    }
 }
 
 /** Seconds remaining on a lockout, or 0 if login is currently allowed. */
 function throttle_seconds_remaining(): int
 {
-    $state = throttle_read();
-    $remaining = $state['locked_until'] - time();
+    $remaining = throttle_locked(LOCK_SH, null)['locked_until'] - time();
     return $remaining > 0 ? $remaining : 0;
 }
 
-function throttle_record_failure(): void
+/**
+ * Count a sign-in attempt. Returns false, without counting, while a lockout
+ * is running. The attempt that reaches LOGIN_MAX_FAILURES arms the lockout;
+ * if that attempt succeeds, throttle_clear() disarms it again.
+ */
+function throttle_begin_attempt(): bool
 {
-    $state = throttle_read();
-    $state['failures']++;
+    $allowed = false;
 
-    if ($state['failures'] >= LOGIN_MAX_FAILURES) {
-        $state['locked_until'] = time() + LOGIN_LOCKOUT_SECONDS;
-        $state['failures'] = 0;
-    }
-    throttle_write($state);
+    throttle_locked(LOCK_EX, static function (array $state) use (&$allowed): array {
+        if ($state['locked_until'] > time()) {
+            return $state;
+        }
+        $allowed = true;
+        $state['failures']++;
+        if ($state['failures'] >= LOGIN_MAX_FAILURES) {
+            $state['locked_until'] = time() + LOGIN_LOCKOUT_SECONDS;
+            $state['failures'] = 0;
+        }
+        return $state;
+    });
+
+    return $allowed;
 }
 
 function throttle_clear(): void
 {
-    throttle_write(['failures' => 0, 'locked_until' => 0]);
+    throttle_locked(LOCK_EX, static fn(): array => ['failures' => 0, 'locked_until' => 0]);
 }
 
 // --------------------------------------------------------------------------
@@ -130,6 +193,7 @@ function auth_attempt(string $username, string $password): bool
     }
 
     session_regenerate_id(true);
+    unset($_SESSION['csrf']);          // a fresh token for the signed-in session
     $_SESSION['author']     = $credentials['username'];
     $_SESSION['login_time'] = time();
     $_SESSION['last_seen']  = time();

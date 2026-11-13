@@ -29,19 +29,25 @@ media library, and a publish button that renders everything into a static
    (owned by whichever user ran the command).
 
 3. Create `gopher/` and make it, `data/`, and `uploads/` writable by the web
-  server user. Publishing creates release directories and swaps the `current`
-  symlink inside `gopher/`:
+   server user. Publishing creates release directories and swaps the `current`
+   symlink inside `gopher/`:
 
    ```
-  mkdir -p gopher/releases
-  chown -R www-data data uploads gopher     # or whatever user PHP runs as
-  chmod 755 data uploads gopher gopher/releases
+   mkdir -p gopher/releases
+   chown -R www-data data uploads gopher     # or whatever user PHP runs as
+   chmod 755 data uploads gopher gopher/releases
    ```
 
 4. Open `login.php`.
 
 There is no registration page and no user table, by design. The only way to
 create or change the account is to run `setup.php` on the server.
+
+Once step 3 has handed `data/` to the web server, run `setup.php` as that
+user from then on, for example `sudo -u www-data php setup.php`. The
+credentials file is readable by its owner only, so a copy written by anyone
+else would lock the web server out. `setup.php` checks this and refuses to run
+as a user who does not own `data/`, `author.auth` or `blog.sqlite`.
 
 ## Docker
 
@@ -90,11 +96,18 @@ publish button; gophernicus is configured to serve `gopher/current`.
 
 The HTTP admin lives at `http://localhost/login.php`, and the rendered gopher
 site is served on `gopher://localhost/` (port 70). To create the initial admin
-account inside the container, run:
+account inside the container, run `setup.php` as the web server's user, not
+as root:
 
 ```bash
-docker exec -it blog103 php /var/www/html/setup.php
+docker exec -it -u www-data blog103 php /var/www/html/setup.php
 ```
+
+Run as root, it would write a credentials file and database that Apache
+cannot read, so `setup.php` refuses and tells you which user to use.
+
+The image turns `display_errors` off and logs PHP errors instead, so read them
+with `docker logs blog103`.
 
 ## Files
 
@@ -105,6 +118,7 @@ db.php          connection, schema, every query
 auth.php        credentials file, login throttle, session guard
 layout.php      shared page chrome
 setup.php       CLI account creation (refuses to run over HTTP)
+paginate.php    lays out auto-wrapped entry text as numbered gopher pages
 
 gopher.php      the static gopher renderer
 login.php       sign in
@@ -117,11 +131,15 @@ publish.php     the publish button and its report
 admin.css
 data/           blog.sqlite, author.auth, login-throttle.json  (deny all)
 uploads/        media files                                    (no scripts)
-gopher/         the rendered gopher site (created on first publish)
+gopher/         the rendered gopher site: releases/<token>/ and a current symlink
 ```
 
 `data/` and `uploads/` are created on first run, each with an `.htaccess`
-guard.
+guard. Every request checks that the guard is in place. If it cannot be
+written, the request fails with an error rather than leaving the directory
+unprotected. Guards the app wrote itself start with a `# Written by blog admin`
+line and are kept up to date. Delete that line if you edit the file and want
+your version left alone.
 
 ## Settings
 
@@ -134,6 +152,10 @@ All in `config.php`:
 | `MAX_MEDIA_PER_ENTRY` | 4 | Also enforced by a CHECK constraint, so changing it needs a migration |
 | `MAX_LINKS_PER_ENTRY` | 4 | Same |
 | `MAX_UPLOAD_BYTES` | 32 MB | Must be under PHP's `upload_max_filesize` and `post_max_size` |
+| `MAX_TITLE_CHARS` | 200 | Checked on the server as well as in the form |
+| `MAX_BODY_CHARS` | 200,000 | Same |
+| `MAX_LINK_LABEL_CHARS` | 120 | Same |
+| `MAX_LINK_URL_BYTES` | 2,000 | Same |
 | `SESSION_IDLE_SECONDS` | 8 hours | Idle timeout |
 | `LOGIN_MAX_FAILURES` | 8 | Then a 15-minute lockout |
 | `ALLOWED_UPLOAD_TYPES` | jpeg, png, gif, webp, avif, mp3, ogg, wav, flac, m4a, mp4, webm, ogv, mov | Keyed by the MIME type `fileinfo` reports |
@@ -142,7 +164,7 @@ Gopher output, same file:
 
 | Constant | Default | Notes |
 | --- | --- | --- |
-| `GOPHER_DIR` | `<blog>/gopher` | **Replaced wholesale on every publish.** Use a directory for nothing else |
+| `GOPHER_DIR` | `<blog>/gopher` | Each publish writes `releases/<token>/` and repoints the `current` symlink. Serve `current` |
 | `GOPHER_HOST` | `localhost` | **Change this.** Written into every menu line |
 | `GOPHER_PORT` | 70 | Same |
 | `GOPHER_SELECTOR_BASE` | `''` | Set to `/blog` if the site is not at your gopher root |
@@ -201,8 +223,13 @@ cascades entirely.
 
 - `wrap` — plain text, wrapped by the reader's browser, blank lines separate
   paragraphs. Leading and trailing whitespace on the whole field is trimmed.
-- `pre` — plain text, every space and line break preserved. Nothing is
-  trimmed. CRLF is normalised to LF in both modes.
+- `pre` — plain text, every space, tab and line break preserved. Nothing is
+  trimmed.
+
+In both modes CRLF and lone CR become LF, and other control characters are
+removed. The title and link text are single lines: tabs and line breaks in
+them become spaces. Text that is not valid UTF-8 is refused with an error
+rather than saved.
 
 The editor's textarea mirrors the choice: serif and soft-wrapped for `wrap`,
 monospace with horizontal scrolling for `pre`, so you can see what the reader
@@ -219,11 +246,25 @@ gets while you type.
   (`YYYYMMDD-<random hex>.<ext>`), so a hostile original name can't influence
   the path.
 - `uploads/.htaccess` refuses to execute anything as a script, as a second
-  layer behind the type check.
+  layer behind the type check. With `mod_headers` enabled (the Docker image
+  enables it), it also sends `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox`. Uploads share the admin's origin, so
+  this stops a browser from ever running a file from there as a page with
+  your session.
+- `data/author.auth` is created owner-only (mode 0600) from the first byte,
+  through a temporary file and an atomic rename.
 - Sessions are `HttpOnly`, `SameSite=Lax`, `Secure` when the request is HTTPS,
-  and the id is regenerated on login.
+  and cookie-only. Strict mode is on, so the server ignores session ids it did
+  not issue. On login the id is regenerated and the CSRF token is replaced.
 - Eight failed sign-ins trigger a 15-minute lockout recorded in
-  `data/login-throttle.json`.
+  `data/login-throttle.json`. Each attempt is counted under a file lock
+  *before* the password is checked, so parallel guesses cannot slip past the
+  limit. If the throttle file cannot be read or written, sign-in fails
+  instead of going unthrottled. The lockout applies to everyone, so someone
+  guessing can keep you locked out too. A long password is the real defence.
+- Uncaught errors are logged and the browser sees only a generic 500 page.
+  `config.php` turns `display_errors` off for web requests, so paths and SQL
+  never reach the page.
 
 ### Locking down the directories
 
@@ -241,6 +282,8 @@ or add the rule to your nginx server block:
 location ^~ /data/ { deny all; return 404; }
 
 location ^~ /uploads/ {
+    add_header X-Content-Type-Options nosniff always;
+    add_header Content-Security-Policy sandbox always;
     location ~ \.(php|phtml|phar|cgi|pl|py)$ { deny all; return 404; }
 }
 ```
@@ -251,7 +294,7 @@ stay reachable, since the public blog serves files from it.
 ## The gopher site
 
 Press **Publish the site** on the Publish page (or the button on the entries
-list). Every public entry is rendered into `GOPHER_DIR` as plain files that any
+list). Every public entry is rendered into `GOPHER_DIR/current` as plain files that any
 gopher server can hand out. Drafts, and any media attached only to drafts, stay
 behind.
 
@@ -262,13 +305,15 @@ into every menu line, and `localhost:70` will not serve anyone but you.
 
 ```
 gopher/
-  gophermap            page 1          selector  /
-  p2/gophermap         page 2          selector  /p2
-  p3/gophermap         page 3          selector  /p3
-  entries/0007.txt     entry bodies    selector  /entries/0007.txt
-  entries/gophermap    a menu, so servers do not auto-list the directory
-  media/<file>         attachments     selector  /media/<file>
-  media/gophermap      likewise
+  current -> releases/<token>     what the gopher server serves
+  releases/<token>/
+    gophermap            page 1          selector  /
+    p2/gophermap         page 2          selector  /p2
+    p3/gophermap         page 3          selector  /p3
+    entries/0007.txt     entry bodies    selector  /entries/0007.txt
+    entries/gophermap    a menu, so servers do not auto-list the directory
+    media/<file>         attachments     selector  /media/<file>
+    media/gophermap      likewise
 ```
 
 Each entry appears in the menu as an information line carrying its creation
@@ -323,7 +368,7 @@ each directory. That is what **bucktooth**, **gophernicus** and **pygopherd**
 expect, and they will serve the tree with no further configuration:
 
 ```
-gophernicus -h your.host -p 70 -r /path/to/gopher
+gophernicus -h your.host -p 70 -r /path/to/gopher/current
 ```
 
 **geomyidae is the exception.** It reads its own `index.gph` format rather than
@@ -334,14 +379,22 @@ either one.
 
 ### How publishing behaves
 
-The site is rebuilt from scratch each time into a staging directory, then
-swapped into place with a rename and the old tree deleted. A failure part way
-through leaves the previous site untouched and serving. This does mean anything
-under `GOPHER_DIR` that the renderer did not create is discarded, so keep
-handwritten phlog pages somewhere else.
+Each publish rebuilds the site from scratch in a new
+`GOPHER_DIR/releases/<token>/` directory. When the build succeeds, a fresh
+symlink is renamed over `GOPHER_DIR/current`, which swaps the site in one
+atomic step. Only then is the previous release deleted. A failure part way
+through removes the half-built release and leaves the previous site
+untouched and serving.
 
-The recursive delete refuses to touch anything that is not a directory it just
-created, so a mistyped `GOPHER_DIR` cannot turn a publish into a wipe.
+`GOPHER_DIR` itself is never renamed, so it can be a bind mount or Docker
+volume. Publishes take turns through a lock on `data/publish.lock`, so a
+double-click just publishes twice in a row. After each swap, every other
+release directory is deleted, including any left behind by a publish that
+crashed, but only directories whose names look like ones the renderer
+generated. The `empty` placeholder and anything else you put in
+`GOPHER_DIR` are left alone. Keep
+handwritten phlog pages outside `releases/`, though, because `current`
+only ever shows the generated tree.
 
 ### One gopher quirk worth knowing
 

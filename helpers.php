@@ -16,6 +16,20 @@ function h(?string $value): string
     return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+/**
+ * Encode a value as a JavaScript literal. Safe inside <script>, and inside an
+ * HTML attribute when wrapped in h(). Invalid UTF-8 becomes U+FFFD instead of
+ * making json_encode() return false.
+ */
+function js(mixed $value): string
+{
+    return json_encode(
+        $value,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+        | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR
+    );
+}
+
 function redirect(string $url): never
 {
     header('Location: ' . $url);
@@ -38,6 +52,25 @@ function post_arr(string $key, int|string $index, string $default = ''): string
 {
     $value = $_POST[$key][$index] ?? null;
     return is_string($value) ? trim($value) : $default;
+}
+
+/**
+ * Check and tidy free text from a form before it is stored.
+ *
+ * Returns null if the text is not valid UTF-8. Otherwise line endings become
+ * \n and control characters are removed, except that multi-line text keeps
+ * \n and \t. Single-line text has line breaks and tabs turned into spaces.
+ */
+function clean_text(string $text, bool $multiline): ?string
+{
+    if (preg_match('//u', $text) !== 1) {
+        return null;
+    }
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
+    if (!$multiline) {
+        $text = str_replace(["\n", "\t"], ' ', $text);
+    }
+    return preg_replace('/[\x00-\x08\x0B-\x1F\x7F]/u', '', $text);
 }
 
 function post_int(string $key, int $default = 0): int
