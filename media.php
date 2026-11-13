@@ -247,7 +247,7 @@ page_title('Media');
         </div>
 
         <form method="post" action="media.php" class="card-action"
-              onsubmit="return confirm(<?= h(json_encode(
+              onsubmit="return confirm(<?= h(js(
                   $useCount === 0
                       ? 'Delete ' . $item['original_name'] . '? This cannot be undone.'
                       : 'Delete ' . $item['original_name'] . '? It will be removed from '

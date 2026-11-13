@@ -149,7 +149,7 @@ page_head('Entries', 'entries');
             </form>
 
             <form method="post" action="index.php"
-                  onsubmit="return confirm(<?= h(json_encode(
+                  onsubmit="return confirm(<?= h(js(
                       'Delete ' . ($title !== '' ? $title : 'entry ' . $id)
                       . ' for good? This cannot be undone.'
                   )) ?>);">

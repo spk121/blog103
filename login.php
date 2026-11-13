@@ -39,11 +39,13 @@ if (is_post() && $lockedFor === 0) {
         $error = 'No account exists yet. Run "php setup.php" on the server to create one.';
     } elseif ($username === '' || $password === '') {
         $error = 'Enter both a username and a password.';
+    } elseif (!throttle_begin_attempt()) {
+        // Another request started the lockout since this page checked.
+        $lockedFor = throttle_seconds_remaining();
     } elseif (auth_attempt($username, $password)) {
         throttle_clear();
         redirect($next);
     } else {
-        throttle_record_failure();
         $lockedFor = throttle_seconds_remaining();
         $error = $lockedFor > 0
             ? 'Too many failed attempts. Try again in ' . (int) ceil($lockedFor / 60) . ' minutes.'

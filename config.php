@@ -120,6 +120,32 @@ const GOPHER_MEDIA_TYPES = ['image' => 'I', 'audio' => 's', 'video' => ';'];
 // Bootstrap
 // --------------------------------------------------------------------------
 
+/*
+ * Never show error details to a browser: they carry file paths and SQL, and
+ * would appear even on the sign-in page. Errors go to the server's error log.
+ * On the command line they go to stderr instead.
+ */
+ini_set('display_errors', PHP_SAPI === 'cli' ? 'stderr' : '0');
+ini_set('log_errors', '1');
+
+set_exception_handler(static function (Throwable $e): void {
+    $detail = get_class($e) . ': ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine();
+
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, 'Error: ' . $detail . "\n");
+        exit(1);
+    }
+
+    error_log('Uncaught ' . $detail);
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Cache-Control: no-store');
+    }
+    echo "Something went wrong and the request was not completed.\n"
+        . "The details are in the web server's error log.\n";
+});
+
 if (function_exists('mb_internal_encoding')) {
     mb_internal_encoding('UTF-8');
 }
@@ -154,6 +180,11 @@ ensure_dir(DATA_DIR, 'deny');
 ensure_dir(UPLOAD_DIR, 'nophp');
 
 if (session_status() === PHP_SESSION_NONE) {
+    // Only accept session ids this server issued, and only from the cookie.
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.use_trans_sid', '0');
+
     session_name('blogadmin');
     session_set_cookie_params([
         'lifetime' => 0,

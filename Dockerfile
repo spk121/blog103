@@ -31,6 +31,15 @@ RUN printf '%s\n' \
         'post_max_size = 40M' \
         > /usr/local/etc/php/conf.d/blog103-uploads.ini
 
+# The image ships without a php.ini, so PHP's built-in default would print
+# errors (with paths and SQL) to the browser. Log them instead.
+RUN printf '%s\n' \
+        'display_errors = Off' \
+        'display_startup_errors = Off' \
+        'log_errors = On' \
+        'expose_php = Off' \
+        > /usr/local/etc/php/conf.d/blog103-errors.ini
+
 WORKDIR /var/www/html
 
 COPY . /var/www/html
