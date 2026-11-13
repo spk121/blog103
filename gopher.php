@@ -360,6 +360,23 @@ function gopher_build(string $root): array
  */
 function gopher_publish(): array
 {
+    // One publish at a time. A second click waits for the first to finish
+    // and then publishes again, which is harmless: the output is the same.
+    $lock = fopen(DATA_DIR . '/publish.lock', 'c');
+    if ($lock === false || !flock($lock, LOCK_EX)) {
+        throw new RuntimeException('Cannot lock ' . DATA_DIR . '/publish.lock.');
+    }
+
+    try {
+        return gopher_publish_locked();
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+
+function gopher_publish_locked(): array
+{
     $base        = rtrim(GOPHER_DIR, '/');
     $releasesDir = $base . '/releases';
     $link        = $base . '/current';
@@ -381,8 +398,7 @@ function gopher_publish(): array
         throw $e;
     }
 
-    $previousTarget = @readlink($link);
-    $tmpLink        = $link . '.new-' . $token;
+    $tmpLink = $link . '.new-' . $token;
 
     if (!@symlink('releases/' . $token, $tmpLink)) {
         gopher_rmtree($release);
@@ -395,15 +411,13 @@ function gopher_publish(): array
         throw new RuntimeException('Cannot swap the new site into place.');
     }
 
-    if ($previousTarget !== false) {
-        $previousToken = basename($previousTarget);
-        // Ignore anything that is not one of our own release directories,
-        // such as the "empty" placeholder seeded before the first publish.
-        if (preg_match('/^[0-9a-f]{12}$/', $previousToken)) {
-            $previousRelease = $releasesDir . '/' . $previousToken;
-            if ($previousRelease !== $release) {
-                gopher_rmtree($previousRelease);
-            }
+    // With the lock held, every other release is stale: the one just
+    // replaced, plus any left behind by a publish that crashed. gopher_rmtree
+    // only deletes directories named like our own tokens, so the "empty"
+    // placeholder and anything else in releases/ survive.
+    foreach (glob($releasesDir . '/*', GLOB_ONLYDIR) ?: [] as $old) {
+        if (basename($old) !== $token) {
+            gopher_rmtree($old);
         }
     }
 

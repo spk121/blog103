@@ -84,6 +84,12 @@ if (is_post()) {
     if ($cleanBody === null) {
         $errors[] = 'The text contains characters that are not valid UTF-8 text.';
     }
+    if (u_strlen($form['title']) > MAX_TITLE_CHARS) {
+        $errors[] = 'The title is longer than ' . MAX_TITLE_CHARS . ' characters.';
+    }
+    if (u_strlen($form['body']) > MAX_BODY_CHARS) {
+        $errors[] = 'The text is longer than ' . number_format(MAX_BODY_CHARS) . ' characters.';
+    }
 
     // Preformatted text keeps every space and line break; wrapped text only
     // loses stray whitespace at either end of the whole field.
@@ -131,6 +137,14 @@ if (is_post()) {
 
         if ($cleanLabel === null) {
             $errors[] = 'Link ' . ($slot + 1) . ' text contains characters that are not valid UTF-8 text.';
+            continue;
+        }
+        if (u_strlen($label) > MAX_LINK_LABEL_CHARS) {
+            $errors[] = 'Link ' . ($slot + 1) . ' text is longer than ' . MAX_LINK_LABEL_CHARS . ' characters.';
+            continue;
+        }
+        if (strlen($url) > MAX_LINK_URL_BYTES) {
+            $errors[] = 'Link ' . ($slot + 1) . ' is longer than ' . MAX_LINK_URL_BYTES . ' characters.';
             continue;
         }
 
@@ -220,7 +234,7 @@ page_head($title, 'entries');
     <label class="field">
       <span class="field-label">Title <span class="hint">optional</span></span>
       <input type="text" name="title" value="<?= h($form['title']) ?>"
-             maxlength="200" placeholder="Leave blank for an untitled entry">
+             maxlength="<?= MAX_TITLE_CHARS ?>" placeholder="Leave blank for an untitled entry">
     </label>
 
     <div class="field">
@@ -242,7 +256,7 @@ page_head($title, 'entries');
       <textarea id="body" name="body" class="manuscript"
                 data-format="<?= h($form['body_format']) ?>"
                 wrap="<?= $form['body_format'] === 'pre' ? 'off' : 'soft' ?>"
-                spellcheck="true" rows="24"
+                spellcheck="true" rows="24" maxlength="<?= MAX_BODY_CHARS ?>"
                 placeholder="Write here. Auto-wrapped text flows to the reader's window; preformatted text keeps every space and line break."><?= "\n" . h($form['body']) ?></textarea>
       <p class="hint hint-block" id="formathint"></p>
     </div>
@@ -321,13 +335,14 @@ page_head($title, 'entries');
             <span class="field-label">Link <?= $slot + 1 ?></span>
             <input type="url" name="link_url[<?= $slot ?>]"
                    value="<?= h($form['links'][$slot]['url']) ?>"
+                   maxlength="<?= MAX_LINK_URL_BYTES ?>"
                    placeholder="https://example.com/page" inputmode="url" spellcheck="false">
           </label>
           <label class="field">
             <span class="visually-hidden">Link <?= $slot + 1 ?> text</span>
             <input type="text" name="link_label[<?= $slot ?>]"
                    value="<?= h($form['links'][$slot]['label']) ?>"
-                   maxlength="120" placeholder="Link text, optional">
+                   maxlength="<?= MAX_LINK_LABEL_CHARS ?>" placeholder="Link text, optional">
           </label>
         </div>
       <?php endfor; ?>

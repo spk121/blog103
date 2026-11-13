@@ -47,11 +47,22 @@ function auth_write_credentials(string $username, string $passwordHash): void
         JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
     );
 
+    // Create the temp file owner-only from the first byte. Removing any stale
+    // copy first matters: rewriting an existing file keeps its old mode.
     $temp = AUTH_FILE . '.tmp';
-    if (file_put_contents($temp, $payload . "\n", LOCK_EX) === false) {
+    @unlink($temp);
+
+    $oldUmask = umask(0077);
+    try {
+        $written = file_put_contents($temp, $payload . "\n", LOCK_EX);
+    } finally {
+        umask($oldUmask);
+    }
+
+    if ($written === false || !chmod($temp, 0600)) {
+        @unlink($temp);
         throw new RuntimeException('Cannot write ' . AUTH_FILE);
     }
-    @chmod($temp, 0600);
     if (!rename($temp, AUTH_FILE)) {
         @unlink($temp);
         throw new RuntimeException('Cannot replace ' . AUTH_FILE);

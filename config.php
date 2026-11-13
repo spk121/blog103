@@ -42,6 +42,10 @@ define('THROTTLE_FILE', DATA_DIR . '/login-throttle.json');
 const MAX_MEDIA_PER_ENTRY = 4;
 const MAX_LINKS_PER_ENTRY = 4;
 const MAX_UPLOAD_BYTES = 33554432;      // 32 MB per file
+const MAX_TITLE_CHARS = 200;
+const MAX_BODY_CHARS = 200000;          // roughly 30,000 words
+const MAX_LINK_LABEL_CHARS = 120;
+const MAX_LINK_URL_BYTES = 2000;
 const SESSION_IDLE_SECONDS = 28800;     // 8 hours
 const LOGIN_MAX_FAILURES = 8;
 const LOGIN_LOCKOUT_SECONDS = 900;      // 15 minutes
@@ -152,28 +156,62 @@ if (function_exists('mb_internal_encoding')) {
 date_default_timezone_set('UTC');   // all internal date maths is UTC
 
 /**
- * Create a directory if missing, and drop in an .htaccess guard.
+ * Create a directory if missing, and make sure its .htaccess guard is in place.
  * $guard: 'deny' blocks all web access, 'nophp' blocks script execution only.
+ *
+ * A guard that cannot be written is an error, not a warning: carrying on
+ * would leave the database or the uploads directory exposed without anyone
+ * noticing. A guard written by an earlier version of this file is upgraded;
+ * an .htaccess you edited yourself is left alone.
  */
 function ensure_dir(string $dir, string $guard = ''): void
 {
     if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
         throw new RuntimeException('Cannot create directory: ' . $dir);
     }
-
-    $htaccess = $dir . '/.htaccess';
-    if ($guard === '' || file_exists($htaccess)) {
+    if ($guard === '') {
         return;
     }
 
-    $rules = $guard === 'deny'
+    $marker = "# Written by blog admin. Delete this line to keep your own edits.\n";
+
+    $rules = $marker . ($guard === 'deny'
         ? "Require all denied\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n"
         : "# Never execute anything in here as a script.\n"
         . "<FilesMatch \"\\.(?i:ph(p[0-9]?|tml|ar)|cgi|pl|py|s?html)$\">\n"
         . "  Require all denied\n</FilesMatch>\n"
-        . "RemoveHandler .php .phtml .phar .cgi .pl .py\n";
+        . "RemoveHandler .php .phtml .phar .cgi .pl .py\n"
+        . "# Serve files only as their real type, and never let one run scripts\n"
+        . "# with the admin's origin, even if a browser decides to render it.\n"
+        . "<IfModule mod_headers.c>\n"
+        . "  Header set X-Content-Type-Options nosniff\n"
+        . "  Header set Content-Security-Policy sandbox\n"
+        . "</IfModule>\n");
 
-    @file_put_contents($htaccess, $rules);
+    // What earlier versions wrote, so those copies can be upgraded in place.
+    $legacy = [
+        "Require all denied\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n",
+        "# Never execute anything in here as a script.\n"
+        . "<FilesMatch \"\\.(?i:ph(p[0-9]?|tml|ar)|cgi|pl|py|s?html)$\">\n"
+        . "  Require all denied\n</FilesMatch>\n"
+        . "RemoveHandler .php .phtml .phar .cgi .pl .py\n",
+    ];
+
+    $htaccess = $dir . '/.htaccess';
+    if (file_exists($htaccess)) {
+        $current = @file_get_contents($htaccess);
+        if ($current === false) {
+            throw new RuntimeException('Cannot read ' . $htaccess);
+        }
+        $ours = str_starts_with($current, $marker) || in_array($current, $legacy, true);
+        if ($current === $rules || !$ours) {
+            return;
+        }
+    }
+
+    if (@file_put_contents($htaccess, $rules, LOCK_EX) !== strlen($rules)) {
+        throw new RuntimeException('Cannot write ' . $htaccess . ', so ' . $dir . ' would be left unprotected.');
+    }
 }
 
 ensure_dir(DATA_DIR, 'deny');

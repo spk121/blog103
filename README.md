@@ -135,7 +135,11 @@ gopher/         the rendered gopher site: releases/<token>/ and a current symlin
 ```
 
 `data/` and `uploads/` are created on first run, each with an `.htaccess`
-guard.
+guard. Every request checks that the guard is in place. If it cannot be
+written, the request fails with an error rather than leaving the directory
+unprotected. Guards the app wrote itself start with a `# Written by blog admin`
+line and are kept up to date. Delete that line if you edit the file and want
+your version left alone.
 
 ## Settings
 
@@ -148,6 +152,10 @@ All in `config.php`:
 | `MAX_MEDIA_PER_ENTRY` | 4 | Also enforced by a CHECK constraint, so changing it needs a migration |
 | `MAX_LINKS_PER_ENTRY` | 4 | Same |
 | `MAX_UPLOAD_BYTES` | 32 MB | Must be under PHP's `upload_max_filesize` and `post_max_size` |
+| `MAX_TITLE_CHARS` | 200 | Checked on the server as well as in the form |
+| `MAX_BODY_CHARS` | 200,000 | Same |
+| `MAX_LINK_LABEL_CHARS` | 120 | Same |
+| `MAX_LINK_URL_BYTES` | 2,000 | Same |
 | `SESSION_IDLE_SECONDS` | 8 hours | Idle timeout |
 | `LOGIN_MAX_FAILURES` | 8 | Then a 15-minute lockout |
 | `ALLOWED_UPLOAD_TYPES` | jpeg, png, gif, webp, avif, mp3, ogg, wav, flac, m4a, mp4, webm, ogv, mov | Keyed by the MIME type `fileinfo` reports |
@@ -238,7 +246,13 @@ gets while you type.
   (`YYYYMMDD-<random hex>.<ext>`), so a hostile original name can't influence
   the path.
 - `uploads/.htaccess` refuses to execute anything as a script, as a second
-  layer behind the type check.
+  layer behind the type check. With `mod_headers` enabled (the Docker image
+  enables it), it also sends `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox`. Uploads share the admin's origin, so
+  this stops a browser from ever running a file from there as a page with
+  your session.
+- `data/author.auth` is created owner-only (mode 0600) from the first byte,
+  through a temporary file and an atomic rename.
 - Sessions are `HttpOnly`, `SameSite=Lax`, `Secure` when the request is HTTPS,
   and cookie-only. Strict mode is on, so the server ignores session ids it did
   not issue. On login the id is regenerated and the CSRF token is replaced.
@@ -268,6 +282,8 @@ or add the rule to your nginx server block:
 location ^~ /data/ { deny all; return 404; }
 
 location ^~ /uploads/ {
+    add_header X-Content-Type-Options nosniff always;
+    add_header Content-Security-Policy sandbox always;
     location ~ \.(php|phtml|phar|cgi|pl|py)$ { deny all; return 404; }
 }
 ```
@@ -371,9 +387,12 @@ through removes the half-built release and leaves the previous site
 untouched and serving.
 
 `GOPHER_DIR` itself is never renamed, so it can be a bind mount or Docker
-volume. Only the release that `current` pointed to before is deleted, and
-only if its name looks like one the renderer generated. The `empty`
-placeholder and anything else you put in `GOPHER_DIR` are left alone. Keep
+volume. Publishes take turns through a lock on `data/publish.lock`, so a
+double-click just publishes twice in a row. After each swap, every other
+release directory is deleted, including any left behind by a publish that
+crashed, but only directories whose names look like ones the renderer
+generated. The `empty` placeholder and anything else you put in
+`GOPHER_DIR` are left alone. Keep
 handwritten phlog pages outside `releases/`, though, because `current`
 only ever shows the generated tree.
 
