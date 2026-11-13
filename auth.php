@@ -107,7 +107,11 @@ function throttle_locked(int $lock, ?callable $change): array
             throw new RuntimeException('Cannot lock ' . THROTTLE_FILE);
         }
 
-        $state = throttle_decode(stream_get_contents($handle));
+        $raw = stream_get_contents($handle);
+        if ($raw === false) {
+            throw new RuntimeException('Cannot read ' . THROTTLE_FILE);
+        }
+        $state = throttle_decode($raw);
         $next  = $change === null ? null : $change($state);
 
         if ($next !== null && $next !== $state) {

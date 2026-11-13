@@ -15,8 +15,6 @@ if (PHP_SAPI !== 'cli') {
     exit("setup.php runs from the command line only.\n");
 }
 
-require __DIR__ . '/config.php';
-
 /*
  * Run as the user that owns the data directory, which is the web server's
  * user once installed. Otherwise the credentials file (mode 0600) and the
@@ -26,7 +24,8 @@ require __DIR__ . '/config.php';
  */
 if (function_exists('posix_geteuid')) {
     $me = posix_geteuid();
-    foreach ([DATA_DIR, AUTH_FILE, DB_FILE] as $path) {
+    $dataDir = __DIR__ . '/data';
+    foreach ([$dataDir, $dataDir . '/author.auth', $dataDir . '/blog.sqlite'] as $path) {
         $owner = file_exists($path) ? fileowner($path) : $me;
         if ($owner !== $me) {
             $ownerName = posix_getpwuid((int) $owner)['name'] ?? (string) $owner;
@@ -40,6 +39,8 @@ if (function_exists('posix_geteuid')) {
         }
     }
 }
+
+require __DIR__ . '/config.php';
 
 function prompt(string $question, bool $hidden = false): string
 {

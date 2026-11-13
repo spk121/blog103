@@ -416,7 +416,7 @@ function gopher_publish_locked(): array
     // only deletes directories named like our own tokens, so the "empty"
     // placeholder and anything else in releases/ survive.
     foreach (glob($releasesDir . '/*', GLOB_ONLYDIR) ?: [] as $old) {
-        if (basename($old) !== $token) {
+        if (!is_link($old) && basename($old) !== $token) {
             gopher_rmtree($old);
         }
     }

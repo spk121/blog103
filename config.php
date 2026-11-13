@@ -209,8 +209,27 @@ function ensure_dir(string $dir, string $guard = ''): void
         }
     }
 
-    if (@file_put_contents($htaccess, $rules, LOCK_EX) !== strlen($rules)) {
-        throw new RuntimeException('Cannot write ' . $htaccess . ', so ' . $dir . ' would be left unprotected.');
+    $temp = @tempnam($dir, '.htaccess-');
+    if ($temp === false || dirname($temp) !== rtrim($dir, '/')) {
+        if ($temp !== false) {
+            @unlink($temp);
+        }
+        throw new RuntimeException('Cannot prepare a temporary guard for ' . $htaccess . '.');
+    }
+
+    try {
+        if (@file_put_contents($temp, $rules) !== strlen($rules)
+            || @file_get_contents($temp) !== $rules
+            || !@chmod($temp, 0644)) {
+            throw new RuntimeException('Cannot write ' . $htaccess . ', so ' . $dir . ' would be left unprotected.');
+        }
+        if (!@rename($temp, $htaccess)) {
+            throw new RuntimeException('Cannot replace ' . $htaccess . ', so ' . $dir . ' would be left unprotected.');
+        }
+    } finally {
+        if (file_exists($temp)) {
+            @unlink($temp);
+        }
     }
 }
 
